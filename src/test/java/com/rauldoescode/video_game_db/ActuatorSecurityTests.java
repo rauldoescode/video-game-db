@@ -26,13 +26,13 @@ class ActuatorSecurityTests {
 
 	@Test
 	void healthLivenessIsPublic() throws Exception {
-		mockMvc.perform(get("/actuator/health"))
+		mockMvc.perform(get("/actuator/health/liveness"))
 				.andExpect(status().isOk()); // should return status code 200
 	}
 
 	@Test
 	void healthReadinessIsPublic() throws Exception {
-		mockMvc.perform(get("/actuator/health"))
+		mockMvc.perform(get("/actuator/health/readiness"))
 				.andExpect(status().isOk()); // should return status code 200
 	}
 
