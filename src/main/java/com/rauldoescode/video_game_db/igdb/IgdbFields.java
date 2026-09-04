@@ -2,6 +2,9 @@ package com.rauldoescode.video_game_db.igdb;
 
 public final class IgdbFields {
 
+    /**
+     * Fields to request from the IGDB /games endpoint
+     */
     public static final String[] GAME = {
             "id",
             "name",
