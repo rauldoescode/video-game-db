@@ -29,7 +29,8 @@ class TwitchTokenProviderTest {
     void setUp() {
         URI tokenUri = URI.create("http://localhost:" + twitch.getPort() + "/oauth2/token");
         IgdbProperties properties = new IgdbProperties(
-                "test-id", "test-secret", tokenUri, Duration.ofSeconds(60));
+                "test-id", "test-secret", tokenUri, Duration.ofSeconds(60),
+                4, 8, Duration.ofSeconds(5));
         provider = new TwitchTokenProvider(properties, RestClient.builder().build());
     }
 

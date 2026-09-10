@@ -31,6 +31,7 @@
 		<!-- Postgres 17 rejects the macOS default US/Pacific on the JDBC handshake -->
 		<test.timezone>UTC</test.timezone>
 		<wiremock.version>3.13.2</wiremock.version>
+		<bucket4j.version>8.19.0</bucket4j.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -148,6 +149,11 @@
 		<dependency>
 			<groupId>com.github.ben-manes.caffeine</groupId>
 			<artifactId>caffeine</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.bucket4j</groupId>
+			<artifactId>bucket4j_jdk17-core</artifactId>
+			<version>${bucket4j.version}</version>
 		</dependency>
 	</dependencies>
 

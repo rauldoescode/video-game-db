@@ -11,10 +11,16 @@ import java.time.Duration;
  * @param clientSecret IGDB client secret
  * @param twitchTokenUri URI for requesting a Twitch access token
  * @param tokenRefreshBuffer buffer time before the token expires to refresh it
+ * @param requestsPerSecond outbound requests per second IGDB allows
+ * @param maxConcurrent outbound requests IGDB allows in flight at once
+ * @param throttleTimeout how long a caller waits for throttle capacity before giving up
  */
 @ConfigurationProperties(prefix = "igdb")
 public record IgdbProperties(String clientId,
                              String clientSecret,
                              URI twitchTokenUri,
-                             Duration tokenRefreshBuffer
+                             Duration tokenRefreshBuffer,
+                             int requestsPerSecond,
+                             int maxConcurrent,
+                             Duration throttleTimeout
 ) {}

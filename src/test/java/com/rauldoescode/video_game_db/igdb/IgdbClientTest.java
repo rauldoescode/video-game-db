@@ -20,6 +20,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IgdbClientTest {
 
@@ -35,21 +36,22 @@ class IgdbClientTest {
 
     private IgdbClient client;
 
+    /**
+     * Builds an IgdbClient pointed at the WireMock stubs, using the same interceptor production uses
+     * so the auth headers and throttle are not reimplemented here. Limits match application.properties.
+     */
     @BeforeEach
     void setUp() {
         IgdbProperties properties = new IgdbProperties(
                 "test-id", "test-secret",
                 URI.create("http://localhost:" + twitch.getPort() + "/oauth2/token"),
-                Duration.ofSeconds(60));
+                Duration.ofSeconds(60),
+                4, 8, Duration.ofSeconds(5));
         TwitchTokenProvider tokens = new TwitchTokenProvider(properties, RestClient.builder().build());
 
         RestClient restClient = RestClient.builder()
                 .baseUrl("http://localhost:" + igdb.getPort() + "/v4")
-                .requestInterceptor((request, body, execution) -> {
-                    request.getHeaders().set("Client-ID", properties.clientId());
-                    request.getHeaders().setBearerAuth(tokens.accessToken());
-                    return execution.execute(request, body);
-                })
+                .requestInterceptor(IgdbConfig.igdbInterceptor(properties, tokens, new IgdbThrottle(properties)))
                 .build();
 
         client = HttpServiceProxyFactory
@@ -118,6 +120,23 @@ class IgdbClientTest {
         assertNull(game.aggregatedRating());
         assertNull(game.summary());
         assertNull(game.genres());
+    }
+
+    @Test
+    void fifthCallInASecondIsDelayedButStillReachesIgdb() {
+        stubToken("abc");
+        igdb.stubFor(post(urlPathEqualTo("/v4/games")).willReturn(okJson("[]")));
+        String query = new ApicalypseQuery().fields(IgdbFields.GAME).search("zelda").build();
+
+        long startNanos = System.nanoTime();
+        for (int i = 0; i < 5; i++) {
+            client.games(query);
+        }
+        Duration elapsed = Duration.ofNanos(System.nanoTime() - startNanos);
+
+        // Four requests per second means the fifth waits out a 250 ms refill.
+        assertTrue(elapsed.toMillis() >= 250, "expected the fifth call to wait, took " + elapsed);
+        igdb.verify(5, postRequestedFor(urlPathEqualTo("/v4/games")));
     }
 
     private void stubToken(String accessToken) {
