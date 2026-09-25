@@ -19,7 +19,8 @@ public class SecurityConfig {
 					HttpMethod.GET,
 					"/actuator/health",
 					"/actuator/health/liveness",
-					"/actuator/health/readiness"
+					"/actuator/health/readiness",
+					"/api/games/**"
 			).permitAll()
 			.anyRequest().authenticated());
 
