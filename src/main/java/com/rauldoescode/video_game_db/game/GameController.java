@@ -3,11 +3,14 @@ package com.rauldoescode.video_game_db.game;
 import com.rauldoescode.video_game_db.dto.response.GameDetailResponse;
 import com.rauldoescode.video_game_db.dto.response.GameSummaryResponse;
 import com.rauldoescode.video_game_db.dto.response.PageResponse;
+import com.rauldoescode.video_game_db.igdb.IgdbCategory;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/games")
@@ -52,5 +55,19 @@ public class GameController {
     @GetMapping("/{igdbId}")
     public GameDetailResponse detail(@PathVariable long igdbId) {
         return gameService.detail(igdbId);
+    }
+
+    /**
+     * Fetches the most popular games in a category.
+     * @param category which IGDB popularity type to rank by
+     * @param limit how many games to return, capped at 50
+     * @return game summaries in popularity order
+     */
+    @GetMapping("/popular")
+    public List<GameSummaryResponse> popular(
+            @RequestParam IgdbCategory category,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int limit) {
+
+        return gameService.popular(category, limit);
     }
 }

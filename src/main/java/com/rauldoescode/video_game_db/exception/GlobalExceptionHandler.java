@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Path;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import java.net.URI;
@@ -58,6 +60,31 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
         problem.setInstance(URI.create(servletRequest.getRequestURI()));
         problem.setProperty("errors", fieldErrors(ex));
+        return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
+    }
+
+    /**
+     * A value that could not be converted, such as {@code category=NOPE}. Spring Framework 7 folds
+     * the old method-argument hook into {@link TypeMismatchException}. Conversion fails before Bean
+     * Validation, so a method argument gets the same {@code errors} array as
+     * {@link #handleConstraintViolation}. Any other type mismatch keeps the default ProblemDetail.
+     */
+    @Override
+    protected ResponseEntity<Object> handleTypeMismatch(
+            TypeMismatchException ex,
+            HttpHeaders headers,
+            HttpStatusCode status,
+            WebRequest request) {
+
+        if (!(ex instanceof MethodArgumentTypeMismatchException mismatch)) {
+            return super.handleTypeMismatch(ex, headers, status, request);
+        }
+        HttpServletRequest servletRequest = ((ServletWebRequest) request).getRequest();
+        String field = fieldName(
+                mismatch.getParameter().getParameterAnnotation(RequestParam.class), mismatch.getName());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
+        problem.setInstance(URI.create(servletRequest.getRequestURI()));
+        problem.setProperty("errors", List.of(new FieldViolation(field, typeMismatchMessage(mismatch))));
         return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
     }
 
@@ -110,6 +137,26 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             name = node.getName();
         }
         return name != null ? name : "unknown";
+    }
+
+    /**
+     * An enum rejection names the allowed constants. Anything else stays a generic invalid value,
+     * because the conversion message Spring builds is not something a client should have to parse.
+     */
+    private static String typeMismatchMessage(MethodArgumentTypeMismatchException ex) {
+        Class<?> required = ex.getRequiredType();
+        if (required == null || !required.isEnum()) {
+            return "Invalid value";
+        }
+        StringBuilder message = new StringBuilder("must be one of ");
+        Object[] constants = required.getEnumConstants();
+        for (int i = 0; i < constants.length; i++) {
+            if (i > 0) {
+                message.append(", ");
+            }
+            message.append(constants[i]);
+        }
+        return message.toString();
     }
 
     private static String fieldName(RequestParam requestParam, String parameterName) {

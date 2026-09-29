@@ -1,6 +1,7 @@
 package com.rauldoescode.video_game_db.game;
 
 import com.rauldoescode.video_game_db.config.SecurityConfig;
+import com.rauldoescode.video_game_db.igdb.IgdbCategory;
 import com.rauldoescode.video_game_db.dto.response.GameSummaryResponse;
 import com.rauldoescode.video_game_db.dto.response.PageResponse;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -62,6 +64,43 @@ class GameControllerTest {
                 .andExpect(jsonPath("$.content[0].name").value("The Legend of Zelda"))
                 .andExpect(jsonPath("$.content[0].coverUrl")
                         .value("https://images.igdb.com/igdb/image/upload/t_cover_big/co1r7f.jpg"));
+    }
+
+    @Test
+    void anonymousPopularReturnsTheCards() throws Exception {
+        when(gameService.popular(eq(IgdbCategory.TRENDING), eq(20)))
+                .thenReturn(List.of(new GameSummaryResponse(
+                        1026L,
+                        "The Legend of Zelda",
+                        "the-legend-of-zelda",
+                        "https://images.igdb.com/igdb/image/upload/t_cover_big/co1r7f.jpg",
+                        LocalDate.of(1998, 11, 21),
+                        List.of("RPG"),
+                        List.of("Nintendo 64"),
+                        91.5)));
+
+        mockMvc.perform(get("/api/games/popular").param("category", "TRENDING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(1026))
+                .andExpect(jsonPath("$[0].coverUrl")
+                        .value("https://images.igdb.com/igdb/image/upload/t_cover_big/co1r7f.jpg"));
+    }
+
+    @Test
+    void unknownCategoryIs400() throws Exception {
+        mockMvc.perform(get("/api/games/popular").param("category", "NOPE"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+                .andExpect(jsonPath("$.errors[0].field").value("category"))
+                .andExpect(jsonPath("$.errors[0].message").value("must be one of TRENDING, WANT_TO_PLAY"));
+    }
+
+    @Test
+    void limitAbove50Is400() throws Exception {
+        mockMvc.perform(get("/api/games/popular").param("category", "TRENDING").param("limit", "51"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+                .andExpect(jsonPath("$.errors[0].field").value("limit"));
     }
 
     @Test

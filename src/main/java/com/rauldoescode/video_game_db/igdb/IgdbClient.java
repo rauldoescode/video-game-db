@@ -6,13 +6,11 @@ import org.springframework.web.service.annotation.PostExchange;
 
 import java.util.List;
 
-// Proxy POSTs to /games path (RestClient base URL in IgdbConfig) and only accepts JSON in return
-
 /**
- * HTTP service interface for the IGDB /games endpoint. Path is relative to the RestClient base URL
- * in IgdbConfig. Accepts JSON in return from the IGDB API.
+ * HTTP service interface for the IGDB /games and /popularity_primitives endpoints. Each method's
+ * path is relative to the RestClient base URL in IgdbConfig. Accepts JSON in return from the IGDB API.
  */
-@HttpExchange(url="/games", accept="application/json")
+@HttpExchange(accept="application/json")
 public interface IgdbClient {
 
     /**
@@ -21,6 +19,15 @@ public interface IgdbClient {
      * @param apicalypseQuery the apicalypse query to send to IGDB
      * @return a list of IgdbGame objects
      */
-    @PostExchange(contentType="text/plain")
+    @PostExchange(url="/games", contentType="text/plain")
     List<IgdbGame> games(@RequestBody String apicalypseQuery);
+
+    /**
+     * POSTs an Apicalypse query to IGDB's popularity primitives. The response is ranked game ids
+     * and scores, not full games — a second call to {@link #games} loads those ids.
+     * @param apicalypseQuery the apicalypse query to send to IGDB
+     * @return the ranked primitives, never null when IGDB responds
+     */
+    @PostExchange(url="/popularity_primitives", contentType="text/plain")
+    List<IgdbPopularity> popularityPrimitives(@RequestBody String apicalypseQuery);
 }

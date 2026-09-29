@@ -10,7 +10,9 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -78,6 +80,18 @@ public class IgdbLookupService {
         return Optional.ofNullable(
                 cached(RedisConfig.GAME_DETAILS, Long.toString(igdbId), () -> fetchDetail(igdbId))
         );
+    }
+
+    /**
+     * Loads the most popular games for a category, serving the 6 hour cached list when there is one.
+     * The key includes the limit, so a size of 10 and a size of 20 do not share an entry.
+     * @param category which IGDB popularity type to rank by
+     * @param limit how many games to return
+     * @return games in popularity order, empty when IGDB has none
+     */
+    public List<IgdbGame> popular(IgdbCategory category, int limit) {
+        return cached(RedisConfig.GAME_POPULAR, category.name() + ":" + limit,
+                () -> fetchPopular(category.popularityType(), limit));
     }
 
     /**
@@ -231,6 +245,66 @@ public class IgdbLookupService {
 
         List<IgdbGame> games = igdbClient.games(query);
         return games == null || games.isEmpty() ? null : games.getFirst();
+    }
+
+    /**
+     * Loads the top games for one popularity type. IGDB ranks ids on
+     * {@code /popularity_primitives}; a second call loads those games. {@code /games} does not
+     * keep the {@code where} order, so the primitives list is what puts the games back in rank.
+     * An id the second call does not return is dropped.
+     * @param type IGDB's {@code popularity_type} id
+     * @param limit how many ranked ids to ask for
+     * @return the games in rank order, never null
+     */
+    private List<IgdbGame> fetchPopular(int type, int limit) {
+        String query = new ApicalypseQuery()
+                .fields("game_id", "value")
+                .where("popularity_type = " + type)
+                .sort("value desc")
+                .limit(limit)
+                .build();
+
+        List<IgdbPopularity> ranked = igdbClient.popularityPrimitives(query);
+        if (ranked == null || ranked.isEmpty()) {
+            // A fresh ArrayList, same reason as fetchSearch: the cached JSON names the concrete
+            // class, and an empty list is an answer worth caching. A null would not be stored.
+            return new ArrayList<>();
+        }
+
+        // Build the string of IDs from the ranked list
+        StringBuilder ids = new StringBuilder();
+        for (IgdbPopularity row : ranked) {
+            if (!ids.isEmpty()) {
+                ids.append(',');
+            }
+            ids.append(row.gameId());
+        }
+
+        // Build the query for /games call
+        String gamesQuery = new ApicalypseQuery()
+                .fields(IgdbFields.GAME)
+                .where("id = (" + ids + ")")
+                .limit(ranked.size())
+                .build();
+
+        // Store each returned game in a map by id
+        Map<Long, IgdbGame> byId = new HashMap<>();
+        List<IgdbGame> games = igdbClient.games(gamesQuery);
+        if (games != null) {
+            for (IgdbGame game : games) {
+                byId.put(game.id(), game);
+            }
+        }
+
+        // Load the games in the same order as the primitives
+        List<IgdbGame> ordered = new ArrayList<>();
+        for (IgdbPopularity row : ranked) {
+            IgdbGame game = byId.get(row.gameId());
+            if (game != null) {
+                ordered.add(game);
+            }
+        }
+        return ordered;
     }
 
     /**

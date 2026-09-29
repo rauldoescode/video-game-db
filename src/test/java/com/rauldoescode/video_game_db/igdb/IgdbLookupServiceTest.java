@@ -30,6 +30,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -116,7 +117,7 @@ class IgdbLookupServiceTest {
      */
     @BeforeEach
     void clearCaches() {
-        for (String cache : List.of(RedisConfig.GAME_SEARCH, RedisConfig.GAME_DETAILS)) {
+        for (String cache : List.of(RedisConfig.GAME_SEARCH, RedisConfig.GAME_DETAILS, RedisConfig.GAME_POPULAR)) {
             Objects.requireNonNull(cacheManager.getCache(cache)).clear();
         }
         stubToken();
@@ -213,6 +214,31 @@ class IgdbLookupServiceTest {
 
         // Three distinct keys; the fourth call only differs by case, so it is a hit.
         igdb.verify(3, postRequestedFor(urlPathEqualTo("/v4/games")));
+    }
+
+    @Test
+    void popularRestoresRankOrderAndTheSecondCallIsACacheHit() {
+        igdb.stubFor(post(urlPathEqualTo("/v4/popularity_primitives")).willReturn(okJson("""
+                [{"game_id": 2, "value": 90}, {"game_id": 1, "value": 10}]
+                """)));
+        // /games returns the ids shuffled. Rank order has to come from the primitives list.
+        igdb.stubFor(post(urlPathEqualTo("/v4/games")).willReturn(okJson("""
+                [{"id": 1, "name": "First"}, {"id": 2, "name": "Second"}]
+                """)));
+
+        List<IgdbGame> first = lookup.popular(IgdbCategory.TRENDING, 20);
+        List<IgdbGame> second = lookup.popular(IgdbCategory.TRENDING, 20);
+
+        assertEquals(2L, first.get(0).id());
+        assertEquals(1L, first.get(1).id());
+        assertEquals(2L, second.get(0).id());
+        assertEquals("Second", second.get(0).name());
+        igdb.verify(1, postRequestedFor(urlPathEqualTo("/v4/popularity_primitives"))
+                .withRequestBody(containing("popularity_type = 1"))
+                .withRequestBody(containing("sort value desc;")));
+        igdb.verify(1, postRequestedFor(urlPathEqualTo("/v4/games"))
+                .withRequestBody(containing("id = (2,1)")));
+        assertTtlIsAbout(Duration.ofHours(6), redis.getExpire(RedisConfig.GAME_POPULAR + "::TRENDING:20"));
     }
 
     @Test

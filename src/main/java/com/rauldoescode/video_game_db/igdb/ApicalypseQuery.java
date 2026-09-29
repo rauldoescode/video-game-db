@@ -9,6 +9,7 @@ public class ApicalypseQuery {
     private String[] fields;
     private String searchTerm;
     private final List<String> whereClauses = new ArrayList<>();
+    private String sortClause;
     private Integer limit;
     private boolean limitExplicit;
     private Integer offset;
@@ -70,6 +71,20 @@ public class ApicalypseQuery {
     }
 
     /**
+     * Sets the sort clause for the query.
+     * @param clause sort clause to use
+     * @return this ApicalypseQuery instance
+     */
+    public ApicalypseQuery sort(String clause) {
+        if (clause == null || clause.isBlank()) {
+            throw new IllegalArgumentException("Sort clause must be non-null and non-empty");
+        }
+
+        sortClause = clause;
+        return this;
+    }
+
+    /**
      * Sets the limit for the query.
      * @param limit maximum number of results to return
      * @return this ApicalypseQuery instance
@@ -117,6 +132,10 @@ public class ApicalypseQuery {
 
         if (!whereClauses.isEmpty()) {
             appendClause(query, "where " + String.join(" & ", whereClauses));
+        }
+
+        if (sortClause != null) {
+            appendClause(query, "sort " + sortClause);
         }
 
         if (limit != null) {

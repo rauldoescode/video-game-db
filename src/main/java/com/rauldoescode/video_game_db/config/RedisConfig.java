@@ -32,6 +32,9 @@ public class RedisConfig implements CachingConfigurer {
     /** Spring cache name; Redis keys look like {@code game:search::{sha256}}. */
     public static final String GAME_SEARCH = "game:search";
 
+    /** Spring cache name; Redis keys look like {@code game:popular::{TRENDING:20}}. */
+    public static final String GAME_POPULAR = "game:popular";
+
     /**
      * Shared Redis cache settings: Jackson 3 JSON values, and do not store nulls. Named caches
      * copy this and then set their own TTL.
@@ -55,8 +58,7 @@ public class RedisConfig implements CachingConfigurer {
     }
 
     /**
-     * The cache manager, with a TTL per cache. Popular is not registered yet; that cache lands
-     * with the popular endpoint.
+     * The cache manager, with a TTL per cache.
      * <p>
      * Declared here rather than left to Boot because of {@code immediateWrites}. With Lettuce on
      * the classpath, Spring Data Redis writes cache entries asynchronously by default: put()
@@ -76,6 +78,7 @@ public class RedisConfig implements CachingConfigurer {
                 .cacheDefaults(redisCacheConfiguration)
                 .withCacheConfiguration(GAME_DETAILS, redisCacheConfiguration.entryTtl(Duration.ofDays(7)))
                 .withCacheConfiguration(GAME_SEARCH, redisCacheConfiguration.entryTtl(Duration.ofHours(24)))
+                .withCacheConfiguration(GAME_POPULAR, redisCacheConfiguration.entryTtl(Duration.ofHours(6)))
                 .build();
     }
 

@@ -4,11 +4,7 @@ import com.rauldoescode.video_game_db.dto.response.GameDetailResponse;
 import com.rauldoescode.video_game_db.dto.response.GameSummaryResponse;
 import com.rauldoescode.video_game_db.dto.response.PageResponse;
 import com.rauldoescode.video_game_db.exception.GameNotFoundException;
-import com.rauldoescode.video_game_db.igdb.IgdbGame;
-import com.rauldoescode.video_game_db.igdb.IgdbImageSize;
-import com.rauldoescode.video_game_db.igdb.IgdbImageUrls;
-import com.rauldoescode.video_game_db.igdb.IgdbLookupService;
-import com.rauldoescode.video_game_db.igdb.IgdbSearchParams;
+import com.rauldoescode.video_game_db.igdb.*;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -62,6 +58,18 @@ public class GameService {
         IgdbGame game = igdbLookupService.detail(igdbId)
                 .orElseThrow(() -> new GameNotFoundException(igdbId));
         return toDetail(game);
+    }
+
+    /**
+     * Fetches the most popular games in a category.
+     * @param category the IGDB category
+     * @param limit how many games to return
+     * @return the most popular games in that category, empty when IGDB has none
+     */
+    public List<GameSummaryResponse> popular(IgdbCategory category, int limit) {
+        return igdbLookupService.popular(category, limit).stream()
+                .map(GameService::toSummary)
+                .toList();
     }
 
     /**

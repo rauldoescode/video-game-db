@@ -4,6 +4,7 @@ import com.rauldoescode.video_game_db.dto.response.GameDetailResponse;
 import com.rauldoescode.video_game_db.dto.response.GameSummaryResponse;
 import com.rauldoescode.video_game_db.dto.response.PageResponse;
 import com.rauldoescode.video_game_db.exception.GameNotFoundException;
+import com.rauldoescode.video_game_db.igdb.IgdbCategory;
 import com.rauldoescode.video_game_db.igdb.IgdbGame;
 import com.rauldoescode.video_game_db.igdb.IgdbLookupService;
 import com.rauldoescode.video_game_db.igdb.IgdbSearchParams;
@@ -80,6 +81,22 @@ class GameServiceTest {
         assertEquals(List.of(), detail.platforms());
         assertEquals(List.of(), detail.screenshotUrls());
         assertEquals(List.of(), detail.videoUrls());
+    }
+
+    @Test
+    void popularKeepsRankOrderAndUsesTheCardCover() {
+        IgdbGame second = new IgdbGame(
+                2L, "Second", "second", null, null, new IgdbGame.Cover("co2"),
+                null, null, null, null, null, null);
+        when(lookup.popular(IgdbCategory.TRENDING, 20)).thenReturn(List.of(second, fullGame()));
+
+        List<GameSummaryResponse> cards = service.popular(IgdbCategory.TRENDING, 20);
+
+        assertEquals(List.of(2L, 1026L), cards.stream().map(GameSummaryResponse::id).toList());
+        assertEquals(
+                "https://images.igdb.com/igdb/image/upload/t_cover_big/co1r7f.jpg",
+                cards.get(1).coverUrl());
+        verify(lookup).popular(IgdbCategory.TRENDING, 20);
     }
 
     @Test
