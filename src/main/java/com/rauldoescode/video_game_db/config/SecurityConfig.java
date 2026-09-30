@@ -24,8 +24,8 @@ public class SecurityConfig {
 			).permitAll()
 			.anyRequest().authenticated());
 
-		// Unauthenticated /api/** should be 401, not 403
-		http.httpBasic(Customizer.withDefaults());
+		// BearerTokenAuthenticationEntryPoint turns a missing or rejected token into 401.
+		http.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
 		return http.build();
 	}
 
