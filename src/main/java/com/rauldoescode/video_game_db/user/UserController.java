@@ -27,7 +27,7 @@ public class UserController {
      */
     @GetMapping("/me")
     public UserResponse currentProfile(@AuthenticationPrincipal Jwt jwt) {
-        UUID userId = userId(jwt);
+        UUID userId = CurrentUser.id(jwt);
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "User " + userId + " was not found"));
@@ -39,18 +39,5 @@ public class UserController {
                 user.getAvatarUrl(),
                 user.isProfilePublic(),
                 user.getCreatedAt());
-    }
-
-    /**
-     * {@code sub} is the user UUID. A value this app did not issue is an auth failure,
-     * because {@link com.rauldoescode.video_game_db.exception.GlobalExceptionHandler} maps a
-     * raw {@link IllegalArgumentException} onto a validation error.
-     */
-    private static UUID userId(Jwt jwt) {
-        try {
-            return UUID.fromString(jwt.getSubject());
-        } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token subject is not a user id");
-        }
     }
 }

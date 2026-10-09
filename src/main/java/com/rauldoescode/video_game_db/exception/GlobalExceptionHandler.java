@@ -4,6 +4,7 @@ import com.rauldoescode.video_game_db.auth.AccountConflictException;
 import com.rauldoescode.video_game_db.auth.InvalidCredentialsException;
 import com.rauldoescode.video_game_db.auth.InvalidRefreshTokenException;
 import com.rauldoescode.video_game_db.auth.RefreshTokenCookies;
+import com.rauldoescode.video_game_db.library.LibraryEntryConflictException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolation;
@@ -133,6 +134,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
         problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("errors", List.of(new FieldViolation(ex.field(), ex.getMessage())));
+        return problem;
+    }
+
+    /**
+     * The game is already in this user's library.
+     */
+    @ExceptionHandler(LibraryEntryConflictException.class)
+    public ProblemDetail handleLibraryEntryConflict(LibraryEntryConflictException ex, HttpServletRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("errors", List.of(new FieldViolation("igdbId", ex.getMessage())));
         return problem;
     }
 

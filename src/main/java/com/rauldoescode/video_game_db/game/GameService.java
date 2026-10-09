@@ -129,7 +129,7 @@ public class GameService {
      * @param epochSeconds Unix seconds, or null when IGDB omitted the date
      * @return the UTC date, or null
      */
-    private static LocalDate releaseDate(Long epochSeconds) {
+    static LocalDate releaseDate(Long epochSeconds) {
         if (epochSeconds == null) {
             return null;
         }
