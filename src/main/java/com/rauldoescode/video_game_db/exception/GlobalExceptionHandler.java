@@ -1,6 +1,11 @@
 package com.rauldoescode.video_game_db.exception;
 
+import com.rauldoescode.video_game_db.auth.AccountConflictException;
+import com.rauldoescode.video_game_db.auth.InvalidCredentialsException;
+import com.rauldoescode.video_game_db.auth.InvalidRefreshTokenException;
+import com.rauldoescode.video_game_db.auth.RefreshTokenCookies;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Path;
@@ -11,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -89,11 +95,68 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Body validation, such as a short password on register. Same {@code errors} array as query params.
+     */
+    @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(
+            MethodArgumentNotValidException ex,
+            HttpHeaders headers,
+            HttpStatusCode status,
+            WebRequest request) {
+
+        HttpServletRequest servletRequest = ((ServletWebRequest) request).getRequest();
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
+        problem.setInstance(URI.create(servletRequest.getRequestURI()));
+        problem.setProperty("errors", ex.getFieldErrors().stream()
+                .map(error -> new FieldViolation(
+                        error.getField(),
+                        error.getDefaultMessage() != null ? error.getDefaultMessage() : "Invalid value"))
+                .toList());
+        return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
+    }
+
+    /**
      * IGDB has no game for this id.
      */
     @ExceptionHandler(GameNotFoundException.class)
     public ProblemDetail handleGameNotFoundException(GameNotFoundException ex, HttpServletRequest request) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problem.setInstance(URI.create(request.getRequestURI()));
+        return problem;
+    }
+
+    /**
+     * Register collided with an existing username or email.
+     */
+    @ExceptionHandler(AccountConflictException.class)
+    public ProblemDetail handleAccountConflict(AccountConflictException ex, HttpServletRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("errors", List.of(new FieldViolation(ex.field(), ex.getMessage())));
+        return problem;
+    }
+
+    /**
+     * Login failed. The detail does not say whether the email exists.
+     */
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ProblemDetail handleInvalidCredentials(InvalidCredentialsException ex, HttpServletRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        problem.setInstance(URI.create(request.getRequestURI()));
+        return problem;
+    }
+
+    /**
+     * Refresh failed. The detail is the same for a missing, unknown, expired, or reused cookie,
+     * and both cookies are expired so the browser stops sending a dead token.
+     */
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ProblemDetail handleInvalidRefreshToken(
+            InvalidRefreshTokenException ex,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        RefreshTokenCookies.clear(response);
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, "Refresh token is invalid");
         problem.setInstance(URI.create(request.getRequestURI()));
         return problem;
     }

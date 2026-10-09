@@ -2,6 +2,7 @@ package com.rauldoescode.video_game_db.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.rauldoescode.video_game_db.auth.JwtProperties;
+import com.rauldoescode.video_game_db.auth.RefreshTokenProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,7 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 
 @Configuration
-@EnableConfigurationProperties(JwtProperties.class)
+@EnableConfigurationProperties({JwtProperties.class, RefreshTokenProperties.class})
 public class JwtConfig {
 
 	/**
