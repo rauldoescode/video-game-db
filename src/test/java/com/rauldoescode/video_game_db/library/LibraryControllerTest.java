@@ -2,6 +2,7 @@ package com.rauldoescode.video_game_db.library;
 
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
+import com.jayway.jsonpath.JsonPath;
 import com.rauldoescode.video_game_db.TestcontainersConfiguration;
 import com.rauldoescode.video_game_db.auth.AccessTokenService;
 import com.rauldoescode.video_game_db.config.RedisConfig;
@@ -30,8 +31,10 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.testcontainers.utility.DockerImageName;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Objects;
+import java.util.UUID;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
@@ -41,8 +44,13 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMoc
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -142,6 +150,12 @@ class LibraryControllerTest {
         mockMvc.perform(post("/api/library")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"igdbId\":1020}"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/library/" + UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"PLAYING\"}"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(delete("/api/library/" + UUID.randomUUID()))
                 .andExpect(status().isUnauthorized());
 
         assertEquals(0, games.count());
@@ -273,6 +287,178 @@ class LibraryControllerTest {
         mockMvc.perform(get("/api/library").header(HttpHeaders.AUTHORIZATION, "Bearer " + other))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void updateReplacesEveryFieldAndMovesTheEntryToTheTop() throws Exception {
+        String token = tokenFor(savedUser("raul"));
+        UUID zelda = entryId(add(token, ZELDA, null).andExpect(status().isCreated()));
+        add(token, WITCHER, null).andExpect(status().isCreated());
+        Instant before = entries.findById(zelda).orElseThrow().getUpdatedAt();
+
+        update(token, zelda, """
+                {
+                  "status": "COMPLETED",
+                  "rating": 10,
+                  "review": "  Best open world.  ",
+                  "hoursPlayed": 120,
+                  "platformPlayed": "Nintendo Switch",
+                  "startedAt": "2017-03-03",
+                  "completedAt": "2017-05-01"
+                }
+                """)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(zelda.toString()))
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.rating").value(10))
+                .andExpect(jsonPath("$.review").value("Best open world."))
+                .andExpect(jsonPath("$.hoursPlayed").value(120))
+                .andExpect(jsonPath("$.platformPlayed").value("Nintendo Switch"))
+                .andExpect(jsonPath("$.startedAt").value("2017-03-03"))
+                .andExpect(jsonPath("$.completedAt").value("2017-05-01"))
+                .andExpect(jsonPath("$.game.id").value(ZELDA))
+                .andExpect(jsonPath("$.game.name").value("The Legend of Zelda: Breath of the Wild"));
+
+        UserGameEntry stored = entries.findById(zelda).orElseThrow();
+        assertEquals(GameStatus.COMPLETED, stored.getStatus());
+        assertTrue(stored.getUpdatedAt().isAfter(before));
+
+        mockMvc.perform(get("/api/library").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(jsonPath("$[*].game.id").value(contains((int) ZELDA, (int) WITCHER)));
+    }
+
+    @Test
+    void updateClearsOmittedAndBlankFields() throws Exception {
+        String token = tokenFor(savedUser("raul"));
+        UUID zelda = entryId(add(token, ZELDA, null).andExpect(status().isCreated()));
+        update(token, zelda, """
+                {"status":"PLAYING","rating":8,"review":"Great","hoursPlayed":10,
+                 "platformPlayed":"Switch","startedAt":"2024-01-01"}
+                """)
+                .andExpect(status().isOk());
+
+        update(token, zelda, "{\"status\":\"ON_HOLD\",\"review\":\"   \"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ON_HOLD"))
+                .andExpect(jsonPath("$.rating").doesNotExist())
+                .andExpect(jsonPath("$.review").doesNotExist())
+                .andExpect(jsonPath("$.hoursPlayed").value(0))
+                .andExpect(jsonPath("$.platformPlayed").doesNotExist())
+                .andExpect(jsonPath("$.startedAt").doesNotExist());
+
+        UserGameEntry stored = entries.findById(zelda).orElseThrow();
+        assertNull(stored.getRating());
+        assertNull(stored.getReview());
+        assertEquals(0, stored.getHoursPlayed());
+    }
+
+    @Test
+    void updatingAnotherUsersEntryIs404LikeAMissingOne() throws Exception {
+        UUID raulsEntry = entryId(add(tokenFor(savedUser("raul")), ZELDA, null).andExpect(status().isCreated()));
+        String other = tokenFor(savedUser("other"));
+
+        update(other, raulsEntry, "{\"status\":\"DROPPED\",\"rating\":1}")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Library entry " + raulsEntry + " was not found"));
+
+        UUID missing = UUID.randomUUID();
+        update(other, missing, "{\"status\":\"DROPPED\"}")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Library entry " + missing + " was not found"));
+
+        UserGameEntry untouched = entries.findById(raulsEntry).orElseThrow();
+        assertEquals(GameStatus.PLAN_TO_PLAY, untouched.getStatus());
+        assertNull(untouched.getRating());
+    }
+
+    @Test
+    void invalidUpdateBodyIs400() throws Exception {
+        String token = tokenFor(savedUser("raul"));
+        UUID zelda = entryId(add(token, ZELDA, null).andExpect(status().isCreated()));
+
+        update(token, zelda, "{}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("status"));
+        update(token, zelda, "{\"status\":\"PLAYING\",\"rating\":0}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("rating"));
+        update(token, zelda, "{\"status\":\"PLAYING\",\"rating\":11}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("rating"));
+        update(token, zelda, "{\"status\":\"PLAYING\",\"hoursPlayed\":-1}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("hoursPlayed"));
+        update(token, zelda, "{\"status\":\"PLAYING\",\"platformPlayed\":\"%s\"}".formatted("x".repeat(51)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("platformPlayed"));
+        update(token, zelda, "{\"status\":\"COMPLETED\",\"startedAt\":\"2024-05-01\",\"completedAt\":\"2024-04-30\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("completedAt"))
+                .andExpect(jsonPath("$.errors[0].message").value("must not be before startedAt"));
+        update(token, zelda, "{\"status\":\"BACKLOG\"}")
+                .andExpect(status().isBadRequest());
+
+        assertEquals(GameStatus.PLAN_TO_PLAY, entries.findById(zelda).orElseThrow().getStatus());
+    }
+
+    @Test
+    void sameDayStartAndCompletionIsAccepted() throws Exception {
+        String token = tokenFor(savedUser("raul"));
+        UUID zelda = entryId(add(token, ZELDA, null).andExpect(status().isCreated()));
+
+        update(token, zelda, "{\"status\":\"COMPLETED\",\"startedAt\":\"2024-05-01\",\"completedAt\":\"2024-05-01\"}")
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void malformedEntryIdIs400() throws Exception {
+        mockMvc.perform(delete("/api/library/not-a-uuid")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(savedUser("raul"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("entryId"));
+    }
+
+    @Test
+    void deleteRemovesTheEntryButKeepsTheGame() throws Exception {
+        String token = tokenFor(savedUser("raul"));
+        UUID zelda = entryId(add(token, ZELDA, null).andExpect(status().isCreated()));
+
+        mockMvc.perform(delete("/api/library/" + zelda).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        assertFalse(entries.existsById(zelda));
+        assertTrue(games.existsById(ZELDA));
+        mockMvc.perform(get("/api/library").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(jsonPath("$", hasSize(0)));
+
+        // The unique (user, game) slot is free again.
+        add(token, ZELDA, null).andExpect(status().isCreated());
+    }
+
+    @Test
+    void deletingAnotherUsersEntryIs404AndKeepsIt() throws Exception {
+        UUID raulsEntry = entryId(add(tokenFor(savedUser("raul")), ZELDA, null).andExpect(status().isCreated()));
+        String other = tokenFor(savedUser("other"));
+
+        mockMvc.perform(delete("/api/library/" + raulsEntry).header(HttpHeaders.AUTHORIZATION, "Bearer " + other))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Library entry " + raulsEntry + " was not found"));
+        mockMvc.perform(delete("/api/library/" + UUID.randomUUID()).header(HttpHeaders.AUTHORIZATION, "Bearer " + other))
+                .andExpect(status().isNotFound());
+
+        assertTrue(entries.existsById(raulsEntry));
+    }
+
+    private ResultActions update(String token, UUID entryId, String body) throws Exception {
+        return mockMvc.perform(put("/api/library/" + entryId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
+    }
+
+    private static UUID entryId(ResultActions created) throws Exception {
+        String body = created.andReturn().getResponse().getContentAsString();
+        return UUID.fromString(JsonPath.read(body, "$.id"));
     }
 
     private ResultActions add(String token, long igdbId, String status) throws Exception {

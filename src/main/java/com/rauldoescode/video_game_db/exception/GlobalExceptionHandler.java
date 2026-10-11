@@ -5,6 +5,7 @@ import com.rauldoescode.video_game_db.auth.InvalidCredentialsException;
 import com.rauldoescode.video_game_db.auth.InvalidRefreshTokenException;
 import com.rauldoescode.video_game_db.auth.RefreshTokenCookies;
 import com.rauldoescode.video_game_db.library.LibraryEntryConflictException;
+import com.rauldoescode.video_game_db.library.LibraryEntryNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolation;
@@ -145,6 +146,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
         problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("errors", List.of(new FieldViolation("igdbId", ex.getMessage())));
+        return problem;
+    }
+
+    /**
+     * No such entry in this user's library, including another user's entry id.
+     */
+    @ExceptionHandler(LibraryEntryNotFoundException.class)
+    public ProblemDetail handleLibraryEntryNotFound(LibraryEntryNotFoundException ex, HttpServletRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problem.setInstance(URI.create(request.getRequestURI()));
         return problem;
     }
 

@@ -1,5 +1,6 @@
 package com.rauldoescode.video_game_db.library;
 
+import com.rauldoescode.video_game_db.dto.request.UpdateLibraryEntryRequest;
 import com.rauldoescode.video_game_db.dto.response.LibraryEntryResponse;
 import com.rauldoescode.video_game_db.game.Game;
 import com.rauldoescode.video_game_db.game.GameCatalogService;
@@ -10,6 +11,7 @@ import com.rauldoescode.video_game_db.user.UserRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -90,6 +92,45 @@ public class LibraryService {
         return found.stream()
                 .map(LibraryService::toResponse)
                 .toList();
+    }
+
+    /**
+     * Replaces the entry's fields with the request. An omitted optional field is cleared.
+     *
+     * @param userId  the signed-in user
+     * @param entryId the library entry
+     * @param request the new state
+     * @return the updated entry
+     * @throws LibraryEntryNotFoundException no such entry in this user's library
+     */
+    @Transactional
+    public LibraryEntryResponse update(UUID userId, UUID entryId, UpdateLibraryEntryRequest request) {
+        UserGameEntry entry = entries.findOwned(entryId, userId)
+                .orElseThrow(() -> new LibraryEntryNotFoundException(entryId));
+        entry.setStatus(request.status());
+        entry.setRating(request.rating());
+        entry.setReview(request.review());
+        entry.setHoursPlayed(request.hoursPlayed() == null ? 0 : request.hoursPlayed());
+        entry.setPlatformPlayed(request.platformPlayed());
+        entry.setStartedAt(request.startedAt());
+        entry.setCompletedAt(request.completedAt());
+        // @UpdateTimestamp is assigned at flush, and the response must carry the new updatedAt.
+        entries.flush();
+        return toResponse(entry);
+    }
+
+    /**
+     * Removes the entry. The {@code games} row stays, since other libraries and shares may use it.
+     *
+     * @param userId  the signed-in user
+     * @param entryId the library entry
+     * @throws LibraryEntryNotFoundException no such entry in this user's library
+     */
+    @Transactional
+    public void delete(UUID userId, UUID entryId) {
+        if (entries.deleteOwned(entryId, userId) == 0) {
+            throw new LibraryEntryNotFoundException(entryId);
+        }
     }
 
     private static LibraryEntryResponse toResponse(UserGameEntry entry) {
